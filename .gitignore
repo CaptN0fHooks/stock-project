@@ -25,6 +25,10 @@ yarn-error.log*
 *.swo
 *~
 
+# Backup files
+*.bak
+*.bak.*
+
 # OS
 .DS_Store
 Thumbs.db
