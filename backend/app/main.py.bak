@@ -1,0 +1,111 @@
+from datetime import datetime
+from typing import Dict, List
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import settings
+from app.models import MarketSummary, MiniQuote, HealthStatus, Watchlist
+from app.services import MarketService, WatchlistService, PostureService
+
+app = FastAPI(title="Market Aggregator API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[f"http://localhost:{settings.FRONTEND_PORT}", f"http://127.0.0.1:{settings.FRONTEND_PORT}"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+market = MarketService()
+watchlists = WatchlistService()
+posture = PostureService()
+
+@app.get("/api/health", response_model=HealthStatus)
+async def health():
+    sources = {"yahoo": True, "alpha_vantage": True, "finnhub": True, "fred": True, "sec": True}
+    return HealthStatus(status="ok", timestamp=datetime.now().isoformat(), sources=sources)
+
+@app.get("/api/summary", response_model=MarketSummary)
+async def summary():
+    as_of = datetime.now().isoformat()
+
+    indices, src_indices = await market.get_indices()
+    vix, src_vix = await market.get_vix()
+    sectors, src_sectors = await market.get_sectors()
+    breadth, src_breadth = await market.get_breadth()
+    movers, src_movers = await market.get_movers()
+    macro = await market.get_macro_calendar()
+    sec_headlines = await market.get_sec_headlines()
+
+    session_posture = posture.calculate(breadth=breadth, sectors=sectors, vix_data=vix)
+
+    sources = {
+        "indices": src_indices,
+        "vix": src_vix,
+        "sectors": src_sectors,
+        "breadth": src_breadth,
+        "movers": src_movers,
+        "macro": "FRED" if macro else "MockData",
+        "sec": "SECEdgar" if sec_headlines else "MockData",
+    }
+    latency_min = {"indices": 15, "vix": 15, "sectors": 15, "breadth": 15, "movers": 15}
+
+    return MarketSummary(
+        as_of=as_of,
+        sources=sources,
+        latency_min=latency_min,
+        indices=indices,
+        vix=vix,
+        breadth=breadth,
+        sectors=sectors,
+        movers=movers,
+        macro=macro,
+        sec_headlines=sec_headlines,
+        session_posture=session_posture,
+        notes=["Free feeds may be delayed up to ~15 minutes; breadth/movers are placeholders pending a compliant free source."],
+    )
+
+@app.get("/api/miniquotes", response_model=List[MiniQuote])
+async def miniquotes(symbols: str = Query(..., description="Comma-separated symbols, e.g., AAPL,MSFT")):
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not syms:
+        raise HTTPException(status_code=400, detail="No symbols provided")
+
+    quotes, _src = await market.fetch_with_fallback(syms)
+
+    results: List[MiniQuote] = []
+    for s in syms:
+        q = quotes.get(s, {"symbol": s, "price": 0.0, "pct": 0.0, "volume": None})
+        spark = await market.get_sparkline(s)
+        results.append(
+            MiniQuote(
+                symbol=s,
+                price=float(q.get("price", 0.0)),
+                pct=float(q.get("pct", 0.0)),
+                volume=q.get("volume"),
+                sparkline=[float(x) for x in spark][-50:],
+            )
+        )
+    return results
+
+@app.get("/api/watchlist", response_model=Watchlist)
+async def wl_get():
+    return watchlists.get()
+
+@app.post("/api/watchlist", response_model=Watchlist)
+async def wl_add(items: List[Dict]):
+    return watchlists.add_symbols(items)
+
+@app.put("/api/watchlist", response_model=Watchlist)
+async def wl_replace(items: List[Dict]):
+    return watchlists.replace(items)
+
+@app.delete("/api/watchlist/{symbol}", response_model=Watchlist)
+async def wl_delete(symbol: str):
+    return watchlists.remove_symbol(symbol)
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Market Aggregator API"}

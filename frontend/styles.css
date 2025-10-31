@@ -1,0 +1,12 @@
+:root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+body { margin: 0; background: #0b0c10; color: #e8e8e8; }
+header { padding: 16px 24px; border-bottom: 1px solid #222; display:flex; align-items:center; justify-content:space-between;}
+main { padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.card { background: #14161a; border: 1px solid #23262d; border-radius: 10px; padding: 16px; }
+.chip { display:inline-block; padding: 2px 8px; border-radius: 999px; border:1px solid #333; margin-right:6px;}
+.green { color:#9ef59e; } .red { color:#ff8a8a; } .muted{ color:#9aa0a6;}
+.strip { display:flex; flex-wrap: wrap; gap: 6px; }
+.strip .cell { padding:6px 8px; border-radius:6px; border:1px solid #333;}
+#wl-items .row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed #2a2e35;}
+#wl-items button { margin-left:auto; }
+svg.spark { width: 120px; height: 28px; }
